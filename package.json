@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@radix-ui/react-icons": "^1.3.2",
     "@radix-ui/react-select": "^2.1.6",
+    "@radix-ui/react-slot": "^1.2.0",
     "@supabase/supabase-js": "^2.49.4",
     "@types/formidable": "^3.4.5",
     "class-variance-authority": "^0.7.1",
@@ -23,6 +25,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-heatmap-grid": "^0.9.1",
+    "react-venn-diagram": "^1.0.0",
     "recharts": "^2.15.2",
     "tailwind-merge": "^3.2.0",
     "tw-animate-css": "^1.2.5"
