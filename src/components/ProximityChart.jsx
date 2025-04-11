@@ -128,7 +128,7 @@ setTotal(totalVisitors);
         <TrendingDown />
       </div>
       <div>
-        <div className="text-2xl">{zone.value}</div>
+        <div className="text-2xl">{zone.value.toLocaleString()}</div>
         <div className="text-sm text-gray-400">Total {zone.label}</div>
       </div>
     </div>
@@ -190,8 +190,14 @@ setTotal(totalVisitors);
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-
+            <Card>
+                <CardContent className="">
+                  <div className="text-2xl">{stats.visitors.toLocaleString()}</div>
+                  <div className="text-sm text-muted-foreground">Visitors</div>
+                </CardContent>
+              </Card>
               <Card className="col-span-1">
+            
                 <CardContent className="">
                   <div className="text-2xl">{stats.peakHour}</div>
                   <div className="text-sm text-muted-foreground">Peak Hour</div>
