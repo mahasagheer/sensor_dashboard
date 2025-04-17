@@ -11,6 +11,7 @@ export default function ProximityChart({ data }) {
     peakHour: "N/A",
   })
   const [total,setTotal]= useState();
+  console.log("data",data);
 
   // Process data to calculate statistics for each zone
   const zoneStats = useMemo(() => {
@@ -128,7 +129,7 @@ setTotal(totalVisitors);
         <TrendingDown />
       </div>
       <div>
-        <div className="text-2xl">{zone.value.toLocaleString()}</div>
+        <div className="text-2xl">{zone?.value?.toLocaleString()}</div>
         <div className="text-sm text-gray-400">Total {zone.label}</div>
       </div>
     </div>
