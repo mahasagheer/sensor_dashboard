@@ -1,5 +1,6 @@
+"use client"
 import { signup } from './actions';
-import { Lock, Mail, User, ArrowRight } from 'lucide-react';
+import { Lock, Mail, User, ArrowRight,File,Users,Building } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SignupPage() {
@@ -70,7 +71,6 @@ export default function SignupPage() {
                   />
                 </div>
               </div>
-
               <div className="space-y-4">
                 <button
                   formAction={signup}

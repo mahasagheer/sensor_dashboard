@@ -1,47 +1,55 @@
 'use server'
 
+import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-
 import { createClient } from '../../utlis/supabase/server'
 
-export async function login(formData) {
+export async function login(prevState, formData) {
   const supabase = await createClient()
+  
+  const email = formData.get('email')?.toString() || ''
+  const password = formData.get('password')?.toString() || ''
 
-  const data = {
-    email: formData.get('email'),
-    password: formData.get('password'),
+  if (!email || !password) {
+    return { error: 'Email and password are required' }
   }
 
-  const { error } = await supabase.auth.signInWithPassword(data)
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
 
-  if (error) {
-    redirect('/error')
-  }
+    if (error) {
+      return { error: error.message }
+    }
 
-  revalidatePath('/', 'layout')
-  redirect('/dashboard')
-}
+    console.log("user data ",data)
+    // Set user data in cookies
+    const cookieStore = cookies()
+    cookieStore.set('user_id', data.user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+      path: '/',
+    })
+    
+    cookieStore.set('user_email', data.user.email, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    })
 
-export async function signup(formData) {
-  const supabase = await createClient()
-
-  const data = {
-    email: formData.get('email'),
-    password: formData.get('password'),
-    options: {
-      data: {
-        full_name: formData.get('name'),
+    revalidatePath('/', 'layout')
+    return { 
+      success: true, 
+      user: {
+        id: data.user.id,
+        email: data.user.email,
       }
     }
+  } catch (error) {
+    return { error: 'An unexpected error occurred' }
   }
-
-  const { error } = await supabase.auth.signUp(data)
-
-  if (error) {
-    redirect('/error')
-  }
-
-  revalidatePath('/', 'layout')
-  redirect('/dashboard')
 }

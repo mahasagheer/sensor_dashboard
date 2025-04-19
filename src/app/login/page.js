@@ -1,8 +1,22 @@
+"use client"
 import { login } from './actions';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-
+import { useFormState } from 'react-dom'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { useActionState } from 'react';
 export default function LoginPage() {
+  const router = useRouter()
+  const [state, formAction] = useActionState(login, null)
+
+  useEffect(() => {
+    if (state?.success) {
+      localStorage.setItem("currentUser",JSON.stringify(state.user));
+      router.push('/dashboard')
+    }
+    
+  }, [state, router])
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-background via-primary/5 to-purple-500/5">
       <div className="absolute inset-0 overflow-hidden">
@@ -26,7 +40,7 @@ export default function LoginPage() {
               Sign in to your account to continue
             </p>
 
-            <form className="space-y-6">
+            <form action={formAction}  className="space-y-6">
               <div className="space-y-4">
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -79,8 +93,8 @@ export default function LoginPage() {
 
               <div className="space-y-4">
                 <button
-                  formAction={login}
-                  className="w-full flex items-center justify-center px-6 py-3 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white font-medium hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-primary/30 transition-all duration-300"
+                type='submit'
+                 className="w-full flex items-center justify-center px-6 py-3 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white font-medium hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-primary/30 transition-all duration-300"
                 >
                   Log in <ArrowRight className="ml-2 h-4 w-4" />
                 </button>

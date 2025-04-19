@@ -38,7 +38,7 @@ const formatHourLabel = (timestamp) => {
 
 export default function LineChart({ data }) {
   // Create hourly labels
-  const hourlyLabels = data.map(item => formatHourLabel(item.Timestamp));
+  const hourlyLabels = data?.map(item => formatHourLabel(item.Timestamp));
   
   // Get the values for each category
   const nearValues = data.map(item => item.Near);
