@@ -1,7 +1,8 @@
 'use client'
 
-import { createClient } from '@/utlis/supabase/client'
+import { createBrowserSupabaseClient } from '@/utlis/supabase/client'
 import { useState } from 'react'
+import { DownloadIcon } from 'lucide-react'
 
 export default function DownloadCsvButton({ initialCsvData }) {
   const [csvData, setCsvData] = useState(initialCsvData)
@@ -45,7 +46,7 @@ export default function DownloadCsvButton({ initialCsvData }) {
       
       // If no initial data, fetch from Supabase
       if (!dataToDownload) {
-        const supabase = createClient()
+        const supabase = createBrowserSupabaseClient()
         const { data: { user } } = await supabase.auth.getUser()
         
         if (!user) throw new Error('User not authenticated')
@@ -98,9 +99,10 @@ export default function DownloadCsvButton({ initialCsvData }) {
   return (
     <button 
       onClick={handleDownload}
-      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+      className="px-3 py-2 bg-blue-500 rounded-full text-white hover:bg-blue-600 transition-colors"
     >
-      Download CSV
+      
+      <DownloadIcon className="w-5 h-5"/>
     </button>
   )
 }

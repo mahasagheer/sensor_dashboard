@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createClient } from '../../utlis/supabase/server'
+import { createServerSupabaseClient } from '../../utlis/supabase/server'
 
 export async function signup(formData) {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
 
   const signUpData = {
     email: formData.get('email'),

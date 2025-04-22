@@ -11,7 +11,6 @@ export default function ProximityChart({ data }) {
     peakHour: "N/A",
   })
   const [total,setTotal]= useState();
-  console.log("data",data);
 
   // Process data to calculate statistics for each zone
   const zoneStats = useMemo(() => {
@@ -82,7 +81,6 @@ export default function ProximityChart({ data }) {
       Medium: data.reduce((sum, entry) => sum + entry.Medium, 0),
       Far: data.reduce((sum, entry) => sum + entry.Far, 0),
     }
-    console.log(totalVisitors);
 setTotal(totalVisitors);
     // Simulate time spent (in real app, this would be calculated from actual dwell time data)
     const avgTimeSpent = {

@@ -1,4 +1,4 @@
-import { createClient } from '@/utlis/supabase/server'
+import { createServerSupabaseClient } from '@/utlis/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request) {
@@ -9,7 +9,7 @@ export async function GET(request) {
     return NextResponse.redirect(new URL('/error?message=Invalid token', request.url))
   }
 
-  const supabase = createClient()
+  const supabase = createServerSupabaseClient()
   
   try {
     const { error } = await supabase.auth.verifyOtp({

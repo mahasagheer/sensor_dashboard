@@ -2,10 +2,10 @@
 
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { createClient } from '../../utlis/supabase/server'
+import { createServerSupabaseClient } from '../../utlis/supabase/server'
 
 export async function login(prevState, formData) {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   
   const email = formData.get('email')?.toString() || ''
   const password = formData.get('password')?.toString() || ''
@@ -23,8 +23,6 @@ export async function login(prevState, formData) {
     if (error) {
       return { error: error.message }
     }
-
-    console.log("user data ",data)
     // Set user data in cookies
     const cookieStore = cookies()
     cookieStore.set('user_id', data.user.id, {

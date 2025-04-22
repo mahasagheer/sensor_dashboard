@@ -1,11 +1,11 @@
-import { createClient } from '@/utlis/supabase/server'
+import { createServerSupabaseClient } from '@/utlis/supabase/server'
 import { NextResponse } from 'next/server'
 import { parse } from 'csv-parse/sync'
 
 export async function PATCH(request) {
   try {
     // 1. Initialize Supabase client
-    const supabase = await createClient()
+    const supabase = await createServerSupabaseClient()
     
     if (!supabase || typeof supabase.from !== 'function') {
       throw new Error('Supabase client not properly initialized')

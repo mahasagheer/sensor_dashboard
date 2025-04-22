@@ -1,10 +1,10 @@
 'use server'
 
-import { createClient } from '@/utlis/supabase/server'
+import { createServerSupabaseClient } from '@/utlis/supabase/server'
 import { redirect } from 'next/navigation'
 
 export async function completeProfile(prevState, formData) {
-  const supabase = await createClient()
+  const supabase = await createServerSupabaseClient()
   
   // Get the session
   const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -59,5 +59,5 @@ export async function completeProfile(prevState, formData) {
     }
   }
 
-  redirect('/login')
+  redirect('/dashboard')
 }

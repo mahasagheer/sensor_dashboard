@@ -1,10 +1,10 @@
 // src/utlis/supabase/getUserProfile.js
-import { createClient } from '@/utlis/supabase/server'
+import { createServerSupabaseClient } from '@/utlis/supabase/server'
 
 export async function getUserProfile() {
   try {
     // Initialize Supabase client
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     
     if (!supabase.auth) {
       throw new Error('Supabase auth not available')

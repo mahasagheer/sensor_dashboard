@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { createClient } from './supabase/server'
+import { createServerSupabaseClient } from './supabase/server'
 
 export async function getUserFromCookies() {
   try {
@@ -14,7 +14,7 @@ export async function getUserFromCookies() {
     }
 
     // Initialize Supabase client
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     
     // Verify client is properly initialized
     if (!supabase || typeof supabase.from !== 'function') {
