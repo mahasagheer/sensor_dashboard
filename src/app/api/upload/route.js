@@ -24,7 +24,7 @@ export async function POST(request) {
     const buffer = await file.arrayBuffer();
     const content = Buffer.from(buffer).toString('utf-8');
 
-    // Parse and normalize CSV
+    // Parse CSV
     const rawRecords = parse(content, {
       columns: true,
       skip_empty_lines: true,
@@ -32,23 +32,74 @@ export async function POST(request) {
       relax_column_count: true,
     });
 
-    const records = rawRecords
-      .map((row) => {
+    console.log(`Total raw records: ${rawRecords.length}`);
+
+    // Process records with proper error handling
+    const records = [];
+    for (const row of rawRecords) {
+      try {
         const timestampRaw = row['Timestamp'] || row['timestamp'];
-        const timestamp = new Date(timestampRaw);
-        if (isNaN(timestamp.getTime())) return null;
+        if (!timestampRaw) {
+          console.warn('Skipping row with missing timestamp:', row);
+          continue;
+        }
 
-        const iso = timestamp.toISOString(); // Normalized ISO string
+        // Parse timestamp
+        let timestamp;
+        try {
+          timestamp = new Date(timestampRaw);
+          if (isNaN(timestamp.getTime())) {
+            // Try alternative formats if standard parsing fails
+            const dateParts = timestampRaw.split(/[- :T/]/);
+            if (dateParts.length >= 3) {
+              // Try different date formats (YYYY-MM-DD, MM/DD/YYYY, etc.)
+              timestamp = new Date(
+                dateParts[0], // year
+                dateParts[1] - 1, // month (0-indexed)
+                dateParts[2] // day
+              );
+              // If time parts exist, add them
+              if (dateParts.length > 3) {
+                timestamp.setHours(
+                  dateParts[3] || 0,
+                  dateParts[4] || 0,
+                  dateParts[5] || 0
+                );
+              }
+            }
+            
+            if (isNaN(timestamp.getTime())) {
+              console.warn(`Failed to parse timestamp: ${timestampRaw}`);
+              continue;
+            }
+          }
+        } catch (e) {
+          console.warn(`Error parsing timestamp: ${timestampRaw}`, e);
+          continue;
+        }
 
-        return {
+        const iso = timestamp.toISOString();
+
+        // Parse numeric values
+        const near = parseInt(row['Near'] || row['near'] || '0');
+        const medium = parseInt(row['Medium'] || row['medium'] || '0');
+        const far = parseInt(row['Far'] || row['far'] || '0');
+        const batteryRaw = row['Battery'] || row['battery'] || '0';
+        const battery = parseFloat(batteryRaw.toString().replace('%', ''));
+
+        records.push({
           timestamp: iso,
-          near: parseInt(row['Near'] || row['near']) || 0,
-          medium: parseInt(row['Medium'] || row['medium']) || 0,
-          far: parseInt(row['Far'] || row['far']) || 0,
-          battery: parseFloat((row['Battery'] || row['battery'] || '0').replace('%', '')) || 0,
-        };
-      })
-      .filter(Boolean); // remove nulls
+          near: isNaN(near) ? 0 : near,
+          medium: isNaN(medium) ? 0 : medium,
+          far: isNaN(far) ? 0 : far,
+          battery: isNaN(battery) ? 0 : battery,
+        });
+      } catch (parseError) {
+        console.error('Error processing row:', parseError, row);
+      }
+    }
+
+    console.log(`Processed valid records: ${records.length}`);
 
     if (records.length === 0) {
       return NextResponse.json(
@@ -57,29 +108,32 @@ export async function POST(request) {
       );
     }
 
-    // Group by normalized date (UTC)
-    const groupedByDate = {};
-    for (const record of records) {
-      const dateOnly = record.timestamp.split('T')[0]; // 'YYYY-MM-DD'
-      if (!groupedByDate[dateOnly]) {
-        groupedByDate[dateOnly] = [];
-      }
-      groupedByDate[dateOnly].push(record);
-    }
-
-    // Sort date keys and assign dayX
-    const sortedDates = Object.keys(groupedByDate).sort();
+    // NEW IMPROVED GROUPING LOGIC
+    // 1. First extract all unique dates in the records
+    const uniqueDates = [...new Set(
+      records.map(record => record.timestamp.split('T')[0])
+    )];
+    
+    // 2. Sort dates chronologically
+    uniqueDates.sort((a, b) => new Date(a) - new Date(b));
+    
+    // 3. Create dayData object with proper sequence
     const dayData = {};
-    sortedDates.forEach((date, index) => {
+    uniqueDates.forEach((date, index) => {
       const dayId = `day${index + 1}`;
+      // Filter records for this specific date
+      const dateRecords = records.filter(
+        record => record.timestamp.split('T')[0] === date
+      );
+      
       dayData[dayId] = {
         id: dayId,
         date,
-        measurements: groupedByDate[date],
+        measurements: dateRecords, // All records for this date
       };
     });
 
-    // Save to Supabase
+    // Insert into Supabase
     const { data, error } = await supabase
       .from('user_uploads')
       .insert({
@@ -95,8 +149,10 @@ export async function POST(request) {
       return NextResponse.json({ message: 'Database error', error }, { status: 500 });
     }
 
+    console.log(`Successfully saved ${records.length} records, grouped into ${Object.keys(dayData).length} days`);
+
     return NextResponse.json({
-      message: 'File uploaded and processed successfully',
+      message: `File uploaded and processed successfully. Processed ${records.length} records.`,
       days: Object.values(dayData).map(day => ({
         id: day.id,
         label: `Day ${day.id.replace('day', '')}`,

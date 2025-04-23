@@ -1,56 +1,94 @@
 "use client"
 import { useState, useEffect } from "react";
 
-export default function CustomHeatmap({ sensorData }) {
+export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selectedOption }) {
   const [heatmapData, setHeatmapData] = useState({ 
     data: [], 
-    positions: [], 
-    hours: [] 
+    positions: ["near", "mid", "far"], 
+    labels: [],
+    title: "Hourly Sensor Totals Heatmap",
+    description: "Showing total counts from 6:00 to 22:00"
   });
   const [hoveredCell, setHoveredCell] = useState(null);
-  const [loading, setLoading] = useState(false); // No longer loading from API
 
   useEffect(() => {
     if (!sensorData || sensorData.length === 0) return;
 
-    // Process the sensor data into heatmap format
-    const processHeatmapData = () => {
-      const hourlyData = {};
-      
-      // Process each sensor data entry
-      sensorData.forEach((entry) => {
-        const timestamp = new Date(entry.Timestamp);
-        const hour = timestamp.getHours();
+    const processData = () => {
+      if (viewMode === 'hourly' || selectedOption === 'aggregate') {
+        // Process hourly data
+        const hourlyData = {};
         
-        // Filter to only include hours between 6AM and 10PM (6-22)
-        if (hour < 6 || hour > 21) return;
+        sensorData.forEach((entry) => {
+          const timestamp = new Date(entry.Timestamp);
+          const hour = timestamp.getHours();
+          
+          if (hour < 6 || hour > 21) return;
 
-        if (!hourlyData[hour]) {
-          hourlyData[hour] = { near: 0, mid: 0, far: 0 };
-        }
+          if (!hourlyData[hour]) {
+            hourlyData[hour] = { near: 0, mid: 0, far: 0 };
+          }
 
-        hourlyData[hour].near += Number(entry.Near) || 0;
-        hourlyData[hour].mid += Number(entry.Medium) || 0;
-        hourlyData[hour].far += Number(entry.Far) || 0;
-      });
+          hourlyData[hour].near += Number(entry.Near) || 0;
+          hourlyData[hour].mid += Number(entry.Medium) || 0;
+          hourlyData[hour].far += Number(entry.Far) || 0;
+        });
 
-      // Format the data for the heatmap
-      const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6AM to 10PM
-      const positions = ["near", "mid", "far"];
-      
-      const data = positions.map(position => {
-        return hours.map(hour => hourlyData[hour]?.[position] || 0);
-      });
+        const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6AM to 10PM
+        const data = heatmapData.positions.map(position => {
+          return hours.map(hour => hourlyData[hour]?.[position] || 0);
+        });
 
-      setHeatmapData({
-        data,
-        positions,
-        hours
-      });
+        setHeatmapData({
+          data,
+          positions: heatmapData.positions,
+          labels: hours.map(hour => `${hour}:00`),
+          title: selectedOption === 'aggregate' 
+            ? "Average Hourly Sensor Totals" 
+            : "Hourly Sensor Totals Heatmap",
+          description: selectedOption === 'aggregate'
+            ? "Showing average counts by hour across all days"
+            : "Showing total counts from 6:00 to 22:00"
+        });
+      } else {
+        // Process daily data
+        const dailyData = {};
+        
+        sensorData.forEach((entry) => {
+          const dateStr = new Date(entry.Timestamp).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+          });
+          
+          if (!dailyData[dateStr]) {
+            dailyData[dateStr] = { near: 0, mid: 0, far: 0 };
+          }
+
+          dailyData[dateStr].near += Number(entry.Near) || 0;
+          dailyData[dateStr].mid += Number(entry.Medium) || 0;
+          dailyData[dateStr].far += Number(entry.Far) || 0;
+        });
+
+        const dates = Object.keys(dailyData).sort((a, b) => 
+          new Date(a) - new Date(b)
+        );
+        
+        const data = heatmapData.positions.map(position => {
+          return dates.map(date => dailyData[date]?.[position] || 0);
+        });
+
+        setHeatmapData({
+          data,
+          positions: heatmapData.positions,
+          labels: dates,
+          title: "Daily Sensor Totals Heatmap",
+          description: "Showing total counts by date"
+        });
+      }
     };
 
-    processHeatmapData();
-  }, [sensorData]);
+    processData();
+  }, [sensorData, viewMode, selectedOption]);
 
   const getColor = (value) => {
     const maxValue = Math.max(...heatmapData.data.flat(), 1);
@@ -63,22 +101,19 @@ export default function CustomHeatmap({ sensorData }) {
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
+    <div className="bg-white">
       <div className="mb-6">
-        <h2 className="text-xl font-bold mb-2">Hourly Sensor Totals Heatmap</h2>
-        <p className="text-sm text-gray-600">Showing total counts from 6:00 to 22:00</p>
+        <h2 className="text-xl font-bold mb-2">{heatmapData.title}</h2>
+        <p className="text-sm text-gray-600">{heatmapData.description}</p>
       </div>
     
-      {/* Flex container for heatmap + legend (side by side) */}
-      <div className="flex justify-between items-start mx-10">
-        {/* Heatmap (left side) */}
+      <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="relative">
-            
             {/* Heatmap grid */}
             {heatmapData?.data?.map((row, rowIndex) => (
               <div key={rowIndex} className="flex items-center">
-                <div className="w-16 text-right pr-2 text-sm font-medium">
+                <div className={`text-right text-sm font-medium ${viewMode === "daily" ? "pr-1 w-6" :"w-25 pr-2"}`}>
                   {heatmapData.positions[rowIndex]}
                 </div>
                 <div className="flex">
@@ -100,11 +135,12 @@ export default function CustomHeatmap({ sensorData }) {
                 </div>
               </div>
             ))}
-            {/* Hour labels */}
-            <div className="flex ml-16">
-              {heatmapData?.hours?.map(hour => (
-                <div key={hour} className="w-14 text-center text-xs">
-                  {hour}:00
+            
+            {/* Labels (hours or dates) */}
+            <div className={`flex ${viewMode === "daily"? "ml-6": "ml-25"}`}>
+              {heatmapData?.labels?.map((label, index) => (
+                <div key={index} className="w-14 text-center text-xs">
+                  {label}
                 </div>
               ))}
             </div>
@@ -120,14 +156,16 @@ export default function CustomHeatmap({ sensorData }) {
               >
                 Position: {heatmapData.positions[hoveredCell.row]}
                 <br />
-                Time: {heatmapData.hours[hoveredCell.col]}:00
+                {viewMode === 'hourly' ? 'Time' : 'Date'}: {heatmapData.labels[hoveredCell.col]}
+                <br />
+                Count: {hoveredCell.value}
               </div>
             )}
           </div>
         </div>
     
-        {/* Color legend (right side) */}
-        <div className=" flex flex-col">
+        {/* Color legend */}
+        <div className="flex flex-col">
           <div className="w-4 h-[240px] bg-gradient-to-b from-[rgba(0,151,230,0.1)] to-[rgba(0,151,230,1)]"></div>
         </div>
       </div>
