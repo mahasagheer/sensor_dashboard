@@ -9,7 +9,7 @@ import { ChevronDown } from 'lucide-react'
 
 export default function DaySelector({ initialUploads, initialProfile }) {
   const supabase = createClientComponentClient()
-  const [selectedOption, setSelectedOption] = useState('all-days')
+  const [selectedOption, setSelectedOption] = useState('aggregate')
   const [sensorData, setSensorData] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
@@ -17,7 +17,7 @@ export default function DaySelector({ initialUploads, initialProfile }) {
 
   // Load default data on component mount
   useEffect(() => {
-    handleOptionSelect('all-days')
+    handleOptionSelect('aggregate')
   }, [])
 
   // Handle option selection
@@ -32,33 +32,35 @@ export default function DaySelector({ initialUploads, initialProfile }) {
         .from('user_uploads')
         .select('*')
         .eq('user_id', initialProfile.user_id)
-      
-      if (error) throw error
+        .order('uploaded_at', { ascending: false })
 
+      if (error) throw error
+  
       const dayData = uploads?.[0]?.day_data
       const parsedDayData = typeof dayData === 'string' ? JSON.parse(dayData) : dayData || {}
       const daysArray = Object.values(parsedDayData)
-
+  
       let processedData = []
-
+  
       if (option === 'all-days') {
         processedData = daysArray.flatMap(day => 
-          day.measurements?.map(entry => formatMeasurement(entry)) || []
-        )
+          day.measurements?.map(entry => formatMeasurement(entry)) || [])
       } else if (option === 'aggregate') {
         processedData = calculateAverages(daysArray)
       } else {
         const matchedDay = daysArray.find(day => day.id === option)
         processedData = matchedDay?.measurements?.map(entry => formatMeasurement(entry)) || []
       }
-
-      setSensorData(processedData.length > 0 ? processedData : 
-        initialProfile?.csv_data ? parseCSVData(initialProfile.csv_data) : []
-      )
-
+  
+      console.log('Processed data:', processedData)
+      // Removed setSensorData from here since it's handled in calculateAverages for aggregate
+      if (option !== 'aggregate') {
+        setSensorData(processedData.length > 0 ? processedData : [])
+      }
+  
     } catch (err) {
       console.error('Error loading data:', err)
-      setSensorData(initialProfile?.csv_data ? parseCSVData(initialProfile.csv_data) : [])
+      setSensorData([])
     } finally {
       setIsLoading(false)
     }
@@ -73,35 +75,75 @@ export default function DaySelector({ initialUploads, initialProfile }) {
   })
 
   const calculateAverages = (daysArray) => {
+    console.log('=== STARTING AVERAGE CALCULATION ===')
+    console.log('Total days in dataset:', daysArray.length)
+    
     const measurementsByHour = {}
-
-    daysArray.forEach(day => {
-      day.measurements?.forEach(measurement => {
-        const hour = new Date(measurement.timestamp).getHours()
-        if (!measurementsByHour[hour]) {
-          measurementsByHour[hour] = []
+    const totalDays = daysArray.length
+  
+    // Organize measurements by hour
+    daysArray.forEach((day, dayIndex) => {
+      console.log(`\nProcessing Day ${dayIndex + 1}/${totalDays}: ${day.id}`)
+      
+      day.measurements?.forEach((measurement, measurementIndex) => {
+        const date = new Date(measurement.timestamp)
+        const hour = date.getHours()
+        const hourKey = `${hour}:00-${hour}:59`
+        
+        if (!measurementsByHour[hourKey]) {
+          measurementsByHour[hourKey] = {
+            measurements: [],
+            daysWithData: new Set(),
+            sumNear: 0,
+            sumFar: 0,
+            sumMedium: 0,
+            sumBattery: 0
+          }
         }
-        measurementsByHour[hour].push(measurement)
+        
+        measurementsByHour[hourKey].measurements.push(measurement)
+        measurementsByHour[hourKey].daysWithData.add(day.id)
+        measurementsByHour[hourKey].sumNear += measurement.near
+        measurementsByHour[hourKey].sumFar += measurement.far
+        measurementsByHour[hourKey].sumMedium += measurement.medium
+        measurementsByHour[hourKey].sumBattery += measurement.battery
       })
     })
-
-    return Object.entries(measurementsByHour).map(([hour, measurements]) => {
-      const count = measurements.length
-      const sum = measurements.reduce((acc, curr) => ({
-        near: acc.near + curr.near,
-        far: acc.far + curr.far,
-        medium: acc.medium + curr.medium,
-        battery: acc.battery + curr.battery
-      }), { near: 0, far: 0, medium: 0, battery: 0 })
-
+  
+    // Calculate averages
+    const result = Object.entries(measurementsByHour).map(([hourKey, data]) => {
+      const hour = parseInt(hourKey.split(':')[0])
+      const daysWithDataCount = data.daysWithData.size
+  
+      const avgNear = Math.round(data.sumNear / totalDays)
+      const avgFar = Math.round(data.sumFar / totalDays)
+      const avgMedium = Math.round(data.sumMedium / totalDays)
+      const avgBattery = data.sumBattery / totalDays
+  
       return {
         Timestamp: `2000-01-01T${hour.toString().padStart(2, '0')}:00:00.000Z`,
-        Near: Math.round(sum.near / count),
-        Far: Math.round(sum.far / count),
-        Medium: Math.round(sum.medium / count),
-        Battery: sum.battery / count
+        HourLabel: hourKey,
+        Near: avgNear,
+        Far: avgFar,
+        Medium: avgMedium,
+        Battery: avgBattery,
+        _meta: {
+          isAggregate: true,
+          totalDays,
+          daysWithData: daysWithDataCount,
+          hour,
+          sumNear: data.sumNear,
+          sumFar: data.sumFar,
+          sumMedium: data.sumMedium
+        }
       }
     })
+  
+    // Sort by hour
+    result.sort((a, b) => a._meta.hour - b._meta.hour)
+    console.log('=== AVERAGE CALCULATION COMPLETE ===')
+    setSensorData(result) // Keeping this state update as requested
+    return result
   }
 
   const parseCSVData = (csvString) => {
@@ -134,12 +176,21 @@ export default function DaySelector({ initialUploads, initialProfile }) {
 
     return result
   }
+// Modify the filteredData calculation to ensure proper data passing
+const filteredData = selectedOption === 'aggregate' 
+  ? sensorData 
+  : sensorData.filter(entry => {
+      const timestamp = new Date(entry.Timestamp)
+      const hour = timestamp.getHours()
+      return hour >= 6 && hour <= 22
+    })
 
-  const filteredData = sensorData.filter(entry => {
-    const timestamp = new Date(entry.Timestamp)
-    const hour = timestamp.getHours()
-    return hour >= 6 && hour <= 22
-  })
+// Add debug output before rendering heatmap
+console.log('HEATMAP INPUT DATA:', {
+  length: filteredData.length,
+  firstItem: filteredData[0],
+  lastItem: filteredData[filteredData.length - 1]
+})
 
   const days = initialUploads?.[0]?.day_data ? Object.values(initialUploads[0].day_data) : []
 
@@ -153,7 +204,6 @@ export default function DaySelector({ initialUploads, initialProfile }) {
     }
   }
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       const dropdown = document.getElementById('day-select-dropdown')
@@ -259,6 +309,7 @@ export default function DaySelector({ initialUploads, initialProfile }) {
             <ProximityChart 
               data={filteredData} 
               viewMode={selectedOption === 'all-days' ? 'daily' : 'hourly'}
+              isAggregate={selectedOption === 'aggregate'}
             />
           </div>
           
@@ -274,6 +325,7 @@ export default function DaySelector({ initialUploads, initialProfile }) {
             <LineChart 
               data={filteredData}
               viewMode={selectedOption === 'all-days' ? 'daily' : 'hourly'}
+              isAggregate={selectedOption === 'aggregate'}
             />
           </div>
         </>

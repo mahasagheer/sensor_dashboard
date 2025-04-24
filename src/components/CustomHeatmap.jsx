@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 
 export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selectedOption }) {
+  console.log("SENSORdata", sensorData);
   const [heatmapData, setHeatmapData] = useState({ 
     data: [], 
     positions: ["near", "mid", "far"], 
@@ -21,20 +22,28 @@ export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selecte
         
         sensorData.forEach((entry) => {
           const timestamp = new Date(entry.Timestamp);
-          const hour = timestamp.getHours();
+          const hour = selectedOption === 'aggregate' 
+            ? timestamp.getUTCHours() // Use UTC for aggregate to match source data
+            : timestamp.getHours();    // Use local time for other options
           
-          if (hour < 6 || hour > 21) return;
+          // Skip filtering for aggregate since parent already handled it
+          if (selectedOption !== 'aggregate' && (hour < 6 || hour > 21)) return;
 
           if (!hourlyData[hour]) {
             hourlyData[hour] = { near: 0, mid: 0, far: 0 };
           }
 
-          hourlyData[hour].near += Number(entry.Near) || 0;
-          hourlyData[hour].mid += Number(entry.Medium) || 0;
-          hourlyData[hour].far += Number(entry.Far) || 0;
+          // Handle both property naming conventions
+          hourlyData[hour].near += Number(entry.Near || entry.near) || 0;
+          hourlyData[hour].mid += Number(entry.Medium || entry.medium) || 0;
+          hourlyData[hour].far += Number(entry.Far || entry.far) || 0;
         });
 
-        const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6AM to 10PM
+        // Determine hours range based on option
+        const hours = selectedOption === 'aggregate'
+          ? Object.keys(hourlyData).map(Number).sort((a, b) => a - b)
+          : Array.from({ length: 16 }, (_, i) => i + 6); // 6AM to 10PM for non-aggregate
+
         const data = heatmapData.positions.map(position => {
           return hours.map(hour => hourlyData[hour]?.[position] || 0);
         });
@@ -51,7 +60,7 @@ export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selecte
             : "Showing total counts from 6:00 to 22:00"
         });
       } else {
-        // Process daily data
+        // Process daily data (unchanged from original)
         const dailyData = {};
         
         sensorData.forEach((entry) => {
@@ -64,9 +73,9 @@ export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selecte
             dailyData[dateStr] = { near: 0, mid: 0, far: 0 };
           }
 
-          dailyData[dateStr].near += Number(entry.Near) || 0;
-          dailyData[dateStr].mid += Number(entry.Medium) || 0;
-          dailyData[dateStr].far += Number(entry.Far) || 0;
+          dailyData[dateStr].near += Number(entry.Near || entry.near) || 0;
+          dailyData[dateStr].mid += Number(entry.Medium || entry.medium) || 0;
+          dailyData[dateStr].far += Number(entry.Far || entry.far) || 0;
         });
 
         const dates = Object.keys(dailyData).sort((a, b) => 
@@ -113,7 +122,7 @@ export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selecte
             {/* Heatmap grid */}
             {heatmapData?.data?.map((row, rowIndex) => (
               <div key={rowIndex} className="flex items-center">
-                <div className={`text-right text-sm font-medium ${viewMode === "daily" ? "pr-1 w-6" :"w-25 pr-2"}`}>
+                <div className={`text-right text-sm font-medium ${viewMode === "daily" ? "pr-1 w-6" : "w-25 pr-2"}`}>
                   {heatmapData.positions[rowIndex]}
                 </div>
                 <div className="flex">
@@ -137,7 +146,7 @@ export default function CustomHeatmap({ sensorData, viewMode = 'hourly', selecte
             ))}
             
             {/* Labels (hours or dates) */}
-            <div className={`flex ${viewMode === "daily"? "ml-6": "ml-25"}`}>
+            <div className={`flex ${viewMode === "daily" ? "ml-6" : "ml-25"}`}>
               {heatmapData?.labels?.map((label, index) => (
                 <div key={index} className="w-14 text-center text-xs">
                   {label}

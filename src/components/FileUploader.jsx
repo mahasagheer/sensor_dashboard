@@ -62,7 +62,15 @@ export default function FileUploaderDialog({ onUploadSuccess, userId }) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('userId', userId);
-
+  // DEBUG: Log file metadata
+  console.log("[FRONTEND] File name:", file.name);
+  console.log("[FRONTEND] File size (bytes):", file.size);
+  
+  // Read file content (for debugging only)
+  const fileText = await file.text();
+  console.log("[FRONTEND] First 200 chars:", fileText.slice(0, 200));
+  console.log("[FRONTEND] Last 200 chars:", fileText.slice(-200));
+  console.log("[FRONTEND] Total lines (approx):", fileText.split('\n').length);
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,

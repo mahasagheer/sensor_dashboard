@@ -8,6 +8,38 @@ export const config = {
   },
 };
 
+// Helper to clean CSV content
+const cleanCSVContent = (content) => {
+  return content
+    // Fix line breaks inside quoted fields
+    .replace(/"[^"]*(?:\n[^"]*)*"/g, match => match.replace(/\n/g, ' '))
+    // Normalize line endings
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    // Remove empty lines
+    .split('\n')
+    .filter(line => line.trim().length > 0)
+    .join('\n');
+};
+
+// Improved number parser that preserves original values
+const safeParseNumber = (value, fieldName) => {
+  if (value === undefined || value === null || value === '') {
+    console.warn(`Missing ${fieldName} value, defaulting to 0`);
+    return 0;
+  }
+  
+  // For battery percentage (remove % but keep decimal)
+  if (fieldName === 'Battery') {
+    const num = parseFloat(String(value).replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  }
+  
+  // For near/medium/far - strict integer parsing
+  const num = parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+  return isNaN(num) ? 0 : num;
+};
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -21,85 +53,98 @@ export async function POST(request) {
       );
     }
 
+    // Read and clean file content
     const buffer = await file.arrayBuffer();
-    const content = Buffer.from(buffer).toString('utf-8');
+    let content = Buffer.from(buffer).toString('utf-8');
+    content = cleanCSVContent(content);
 
-    // Parse CSV
+    console.log('[DEBUG] Cleaned content length:', content.length);
+    console.log('[DEBUG] First 200 chars:', content.slice(0, 200));
+    console.log('[DEBUG] Last 200 chars:', content.slice(-200));
+
+    // Parse CSV with error-tolerant settings
     const rawRecords = parse(content, {
-      columns: true,
+      columns: (header) => header.map(col => col.trim()), // Clean headers
       skip_empty_lines: true,
-      trim: true,
       relax_column_count: true,
+      relax_quotes: true,
+      bom: true,
+      on_record: (record, { lines, error }) => {
+        if (error) {
+          console.warn(`[PARSE WARNING] Line ${lines}: ${error.message}`);
+          // Attempt to salvage partial data
+          const parts = String(record).split(',');
+          return {
+            Timestamp: parts[0] || null,
+            Near: safeParseNumber(parts[1], 'Near'),
+            Medium: safeParseNumber(parts[2], 'Medium'),
+            Far: safeParseNumber(parts[3], 'Far'),
+            Battery: safeParseNumber(parts[4], 'Battery'),
+            __error: error.message
+          };
+        }
+        return record;
+      }
     });
 
-    console.log(`Total raw records: ${rawRecords.length}`);
+    console.log('[DEBUG] Raw records count:', rawRecords.length);
+    console.log('[DEBUG] Sample record:', rawRecords[0]); // Log first record for verification
 
-    // Process records with proper error handling
+    // Process records with validation
     const records = [];
-    for (const row of rawRecords) {
-      try {
-        const timestampRaw = row['Timestamp'] || row['timestamp'];
-        if (!timestampRaw) {
-          console.warn('Skipping row with missing timestamp:', row);
-          continue;
-        }
+    const skipReasons = {
+      invalidTimestamp: 0,
+      invalidData: 0
+    };
 
-        // Parse timestamp
+    for (const [index, row] of rawRecords.entries()) {
+      try {
+        // Normalize field names (case-insensitive)
+        const fields = {};
+        Object.keys(row).forEach(key => {
+          fields[key.toLowerCase()] = row[key];
+        });
+
+        const timestampRaw = fields.timestamp || fields.time || fields.date;
+        const near = safeParseNumber(fields.near, 'Near');
+        const medium = safeParseNumber(fields.medium, 'Medium');
+        const far = safeParseNumber(fields.far, 'Far');
+        const battery = safeParseNumber(fields.battery, 'Battery');
+
+        // Validate timestamp
         let timestamp;
         try {
           timestamp = new Date(timestampRaw);
           if (isNaN(timestamp.getTime())) {
-            // Try alternative formats if standard parsing fails
-            const dateParts = timestampRaw.split(/[- :T/]/);
-            if (dateParts.length >= 3) {
-              // Try different date formats (YYYY-MM-DD, MM/DD/YYYY, etc.)
-              timestamp = new Date(
-                dateParts[0], // year
-                dateParts[1] - 1, // month (0-indexed)
-                dateParts[2] // day
-              );
-              // If time parts exist, add them
-              if (dateParts.length > 3) {
-                timestamp.setHours(
-                  dateParts[3] || 0,
-                  dateParts[4] || 0,
-                  dateParts[5] || 0
-                );
-              }
-            }
-            
+            // Try alternative formats
+            timestamp = new Date(timestampRaw.replace(/(\d{4})-(\d{2})-(\d{2})/, '$1/$2/$3'));
             if (isNaN(timestamp.getTime())) {
-              console.warn(`Failed to parse timestamp: ${timestampRaw}`);
-              continue;
+              throw new Error('Invalid date format');
             }
           }
         } catch (e) {
-          console.warn(`Error parsing timestamp: ${timestampRaw}`, e);
+          console.warn(`[VALIDATION] Row ${index + 1}: Invalid timestamp "${timestampRaw}"`);
+          skipReasons.invalidTimestamp++;
           continue;
         }
 
-        const iso = timestamp.toISOString();
-
-        // Parse numeric values
-        const near = parseInt(row['Near'] || row['near'] || '0');
-        const medium = parseInt(row['Medium'] || row['medium'] || '0');
-        const far = parseInt(row['Far'] || row['far'] || '0');
-        const batteryRaw = row['Battery'] || row['battery'] || '0';
-        const battery = parseFloat(batteryRaw.toString().replace('%', ''));
-
         records.push({
-          timestamp: iso,
-          near: isNaN(near) ? 0 : near,
-          medium: isNaN(medium) ? 0 : medium,
-          far: isNaN(far) ? 0 : far,
-          battery: isNaN(battery) ? 0 : battery,
+          timestamp: timestamp.toISOString(),
+          near,
+          medium,
+          far,
+          battery,
+          originalRow: index + 1
         });
-      } catch (parseError) {
-        console.error('Error processing row:', parseError, row);
+      } catch (e) {
+        console.warn(`[VALIDATION] Row ${index + 1}: Invalid data -`, e.message);
+        skipReasons.invalidData++;
       }
     }
 
-    console.log(`Processed valid records: ${records.length}`);
+    console.log('[DEBUG] Valid records count:', records.length);
+    console.log('[DEBUG] Skip reasons:', skipReasons);
+    console.log('[DEBUG] Sample processed record:', records[0]); // Verify values
 
     if (records.length === 0) {
       return NextResponse.json(
@@ -108,51 +153,49 @@ export async function POST(request) {
       );
     }
 
-    // NEW IMPROVED GROUPING LOGIC
-    // 1. First extract all unique dates in the records
+    // Group by day
     const uniqueDates = [...new Set(
       records.map(record => record.timestamp.split('T')[0])
-    )];
-    
-    // 2. Sort dates chronologically
-    uniqueDates.sort((a, b) => new Date(a) - new Date(b));
-    
-    // 3. Create dayData object with proper sequence
+    )].sort((a, b) => new Date(a) - new Date(b));
+
     const dayData = {};
     uniqueDates.forEach((date, index) => {
       const dayId = `day${index + 1}`;
-      // Filter records for this specific date
-      const dateRecords = records.filter(
-        record => record.timestamp.split('T')[0] === date
-      );
-      
       dayData[dayId] = {
         id: dayId,
         date,
-        measurements: dateRecords, // All records for this date
+        measurements: records.filter(
+          record => record.timestamp.split('T')[0] === date
+        ),
       };
     });
 
-    // Insert into Supabase
+    // Save to Supabase
     const { data, error } = await supabase
       .from('user_uploads')
       .insert({
         user_id: userId,
         original_filename: file.name,
-        day_data: dayData,
+        day_data: dayData
       })
       .select()
       .single();
 
     if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({ message: 'Database error', error }, { status: 500 });
+      console.error('[SUPABASE ERROR]', error);
+      return NextResponse.json(
+        { message: 'Database error', error: error.message },
+        { status: 500 }
+      );
     }
 
-    console.log(`Successfully saved ${records.length} records, grouped into ${Object.keys(dayData).length} days`);
-
     return NextResponse.json({
-      message: `File uploaded and processed successfully. Processed ${records.length} records.`,
+      message: `Processed ${records.length}/${rawRecords.length} records successfully`,
+      stats: {
+        totalRecords: rawRecords.length,
+        processedRecords: records.length,
+        skipReasons,
+      },
       days: Object.values(dayData).map(day => ({
         id: day.id,
         label: `Day ${day.id.replace('day', '')}`,
@@ -160,8 +203,9 @@ export async function POST(request) {
         count: day.measurements.length,
       })),
     });
+
   } catch (err) {
-    console.error('Unexpected error:', err);
+    console.error('[UNHANDLED ERROR]', err);
     return NextResponse.json(
       { message: 'Internal server error', error: err.message },
       { status: 500 }
